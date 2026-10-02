@@ -1,26 +1,88 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import * as argon2 from 'argon2';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
+import { PrismaService } from '../../database/database.service.js';
+
 
 @Injectable()
 export class UserService {
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
+  private readonly publicUserSelect = {
+    id: true,
+    email: true,
+    createdAt: true,
+    updatedAt: true,
+  } as const;
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(createUserDto: CreateUserDto) {
+    const password = await this.hashPassword(createUserDto.password);
+
+    return this.prisma.user.create({
+      data: {
+        email: createUserDto.email,
+        password,
+      },
+      select: this.publicUserSelect,
+    });
   }
 
   findAll() {
-    return `This action returns all user`;
+    return this.prisma.user.findMany({
+      select: this.publicUserSelect,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  async findOne(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: this.publicUserSelect,
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with id "${id}" not found`);
+    }
+
+    return user;
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
+  async update(id: string, updateUserDto: UpdateUserDto) {
+    await this.findOne(id);
+
+    const data: { email?: string; password?: string } = {};
+
+    if (updateUserDto.email !== undefined) {
+      data.email = updateUserDto.email;
+    }
+
+    if (updateUserDto.password !== undefined) {
+      data.password = await this.hashPassword(updateUserDto.password);
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data,
+      select: this.publicUserSelect,
+    });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} user`;
+  async remove(id: string) {
+    const result = await this.prisma.user.deleteMany({
+      where: { id },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException(`User with id "${id}" not found`);
+    }
+
+    return { message: 'User deleted successfully' };
+  }
+
+  private hashPassword(password: string) {
+    return argon2.hash(password);
   }
 }
