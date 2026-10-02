@@ -12,6 +12,13 @@ export class UserService {
     email: true,
     createdAt: true,
     updatedAt: true,
+    role: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
   } as const;
 
   constructor(private readonly prisma: PrismaService) {}
@@ -23,6 +30,9 @@ export class UserService {
       data: {
         email: createUserDto.email,
         password,
+        role: {
+          connect: { code: 'user' },
+        },
       },
       select: this.publicUserSelect,
     });
@@ -53,7 +63,11 @@ export class UserService {
   async update(id: string, updateUserDto: UpdateUserDto) {
     await this.findOne(id);
 
-    const data: { email?: string; password?: string } = {};
+    const data: {
+      email?: string;
+      password?: string;
+      role?: { connect: { code: string } };
+    } = {};
 
     if (updateUserDto.email !== undefined) {
       data.email = updateUserDto.email;
@@ -61,6 +75,10 @@ export class UserService {
 
     if (updateUserDto.password !== undefined) {
       data.password = await this.hashPassword(updateUserDto.password);
+    }
+
+    if (updateUserDto.roleCode !== undefined) {
+      data.role = { connect: { code: updateUserDto.roleCode } };
     }
 
     return this.prisma.user.update({
